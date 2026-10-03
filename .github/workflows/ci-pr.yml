@@ -530,6 +530,12 @@ jobs:
             Write-Host "Available files in artifacts directory:"
             Get-ChildItem -Path "$env:GITHUB_WORKSPACE\artifacts" -Recurse -File | 
               ForEach-Object { Write-Host "  $($_.Name)" }
+
+            '[]' |
+              Set-Content `
+                -Path "$env:RUNNER_TEMP\test-assemblies.json" `
+                -Encoding UTF8
+
             exit 0
           }
 
