@@ -494,6 +494,7 @@
       "outputPath": "C:\\Mathew\\newProject\\WebApplication1\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
+        "C:\\Mathew\\newProject\\NuGet.Config",
         "C:\\Users\\mathe\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
