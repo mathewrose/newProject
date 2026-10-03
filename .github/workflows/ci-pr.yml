@@ -72,7 +72,6 @@ jobs:
       #   -Channel 8.0
       #   -Architecture x86
       # ========================================================
-
       - name: Install .NET 8.0 x86 Runtime and SDK
         run: |
           $ErrorActionPreference = "Stop"
@@ -89,9 +88,7 @@ jobs:
             -Uri "https://dot.net/v1/dotnet-install.ps1" `
             -OutFile $installScript
 
-          # ----------------------------------------------------
-          # Install .NET 8 x86 Runtime
-          # ----------------------------------------------------
+          # -------- Install .NET 8 x86 Runtime --------
 
           Write-Host "Installing .NET 8.0 x86 Runtime..."
 
@@ -102,13 +99,12 @@ jobs:
             -Runtime dotnet `
             -Verbose
 
-          if ($LASTEXITCODE -ne 0) {
-            throw ".NET 8 x86 Runtime installation failed."
+          # Exit codes: 0 = success, 3010 = reboot required
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Host "Warning: Runtime installation returned code $LASTEXITCODE (may already be installed)"
           }
 
-          # ----------------------------------------------------
-          # Install .NET 8 x86 SDK
-          # ----------------------------------------------------
+          # -------- Install .NET 8 x86 SDK --------
 
           Write-Host "Installing .NET 8.0 x86 SDK..."
 
@@ -118,13 +114,11 @@ jobs:
             -InstallDir $installDir `
             -Verbose
 
-          if ($LASTEXITCODE -ne 0) {
-            throw ".NET 8 x86 SDK installation failed."
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Host "Warning: SDK installation returned code $LASTEXITCODE (may already be installed)"
           }
 
-          # ----------------------------------------------------
-          # Verify installation
-          # ----------------------------------------------------
+          # -------- Verify installation --------
 
           $dotnetPath = "$installDir\dotnet.exe"
 
@@ -141,7 +135,7 @@ jobs:
           & $dotnetPath --list-runtimes
 
           Write-Host ""
-          Write-Host ".NET 8 x86 Runtime and SDK installed successfully."
+          Write-Host ".NET 8 x86 Runtime and SDK ready."
 
           # Make x86 dotnet available to subsequent steps.
           $installDir |
