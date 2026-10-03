@@ -19,7 +19,10 @@
     <script>
       document.querySelector("form").addEventListener("submit", (event) => {
         event.preventDefault();
-        document.querySelector("#submission-message").textContent = "Details Submitted";
+        const name = document.querySelector("#name").value.trim();
+        document.querySelector("#submission-message").textContent = name
+          ? "Details Submitted"
+          : "Enter details";
       });
     </script>
   </body>
