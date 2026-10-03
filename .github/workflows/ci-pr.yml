@@ -568,9 +568,6 @@ jobs:
             $env:GITHUB_WORKSPACE `
             "coverlet.runsettings"
 
-          if (-not (Test-Path $runSettings)) {
-            # throw "coverlet.runsettings not found."
-          }
 
           # ----------------------------------------------------
           # Locate vstest.console.exe
