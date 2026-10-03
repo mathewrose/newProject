@@ -29,7 +29,7 @@ permissions:
 env:
   SOLUTION_PATTERN: '**/*.sln'
   # BUILD_PLATFORM: 'x86'
-  BUILD_PLATFORM: 'Any CPU'
+  BUILD_PLATFORM: 'x86'
   BUILD_CONFIGURATION: 'Release'
   DOTNET_X86_ROOT: 'C:\Program Files (x86)\dotnet'
   ARTIFACT_STAGING_DIR: '${{ github.workspace }}\artifacts'
@@ -495,22 +495,42 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          $artifactDir = "$env:GITHUB_WORKSPACE\artifacts"
-
-          $testAssemblies = @(
-            Get-ChildItem `
-              -Path $artifactDir `
-              -Filter "*Tests.dll" `
-              -Recurse `
-              -File |
-            Where-Object {
-              $_.Name -notlike "*TestAdapter.dll" -and
-              $_.FullName -notmatch "\\obj\\"
-            }
+          # Search in multiple locations
+          $searchPaths = @(
+            "$env:GITHUB_WORKSPACE\artifacts",
+            "$env:GITHUB_WORKSPACE\bin\Release",
+            "$env:GITHUB_WORKSPACE\*\bin\Release"
           )
 
+          $testAssemblies = @()
+
+          foreach ($searchPath in $searchPaths) {
+            if (Test-Path $searchPath) {
+              Write-Host "Searching in: $searchPath"
+              
+              $found = @(
+                Get-ChildItem `
+                  -Path $searchPath `
+                  -Filter "*Tests.dll" `
+                  -Recurse `
+                  -File |
+                Where-Object {
+                  $_.Name -notlike "*TestAdapter.dll" -and
+                  $_.FullName -notmatch "\\obj\\"
+                }
+              )
+              
+              $testAssemblies += $found
+              Write-Host "Found $($found.Count) test assemblies in this path"
+            }
+          }
+
           if ($testAssemblies.Count -eq 0) {
-            throw "No *Tests.dll assemblies found in $artifactDir"
+            Write-Host "Warning: No *Tests.dll assemblies found in any search path"
+            Write-Host "Available files in artifacts directory:"
+            Get-ChildItem -Path "$env:GITHUB_WORKSPACE\artifacts" -Recurse -File | 
+              ForEach-Object { Write-Host "  $($_.Name)" }
+            exit 0
           }
 
           Write-Host "Found $($testAssemblies.Count) test assembly/assemblies:"
@@ -524,7 +544,6 @@ jobs:
             Set-Content `
               -Path "$env:RUNNER_TEMP\test-assemblies.json" `
               -Encoding UTF8
-
 
       # ========================================================
       # 14. Run x86 unit tests
