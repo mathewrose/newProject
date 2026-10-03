@@ -11,8 +11,16 @@
       <form>
         <label for="name">Name:</label>
         <input type="text" id="name" name="name">
+        <br>
         <button type="submit">Submit</button>
       </form>
+      <p id="submission-message" role="status" aria-live="polite"></p>
     </main>
+    <script>
+      document.querySelector("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        document.querySelector("#submission-message").textContent = "Details Submitted";
+      });
+    </script>
   </body>
 </html>
