@@ -1,18 +1,16 @@
-name: .NET x86 CI
+name: Build and Test - .NET 8 x86
 
 # ============================================================
-# Azure DevOps:
+# Azure DevOps equivalent:
 #
 # trigger:
-#   - none
+# - none
 #
 # pr:
 #   branches:
 #     include:
-#       - main
+#     - main
 #   drafts: false
-#
-# Equivalent GitHub Actions trigger:
 # ============================================================
 
 on:
@@ -25,32 +23,23 @@ on:
       - reopened
       - ready_for_review
 
-# ============================================================
-# Azure:
-# pool:
-#   vmImage: 'windows-latest'
-#
-# variables:
-#   solution: '**/*.sln'
-#   buildPlatform: 'x86'
-#   buildConfiguration: 'Release'
-# ============================================================
+permissions:
+  contents: read
 
 env:
   SOLUTION_PATTERN: '**/*.sln'
   BUILD_PLATFORM: 'x86'
   BUILD_CONFIGURATION: 'Release'
+  DOTNET_X86_ROOT: 'C:\Program Files (x86)\dotnet'
+  ARTIFACT_STAGING_DIR: '${{ github.workspace }}\artifacts'
+  TEST_RESULTS_DIR: '${{ github.workspace }}\TestResults'
 
 jobs:
-
   build-test:
 
-    name: Build, Publish and Test - x86
+    name: Build, Publish and Test (x86)
 
-    # Azure:
-    # drafts: false
-    #
-    # Do not run for Draft PRs.
+    # Equivalent of Azure DevOps drafts: false
     if: ${{ !github.event.pull_request.draft }}
 
     runs-on: windows-latest
@@ -61,84 +50,87 @@ jobs:
 
     steps:
 
-      # ======================================================
-      # 1. Checkout source
-      # ======================================================
+      # ========================================================
+      # 1. Checkout
+      # ========================================================
 
-      - name: Checkout repository
+      - name: Checkout source
         uses: actions/checkout@v4
 
 
-      # ======================================================
-      # 2. Install .NET 8.0 x86
+      # ========================================================
+      # 2. Install .NET 8 x86 runtime + SDK
       #
-      # Azure source:
+      # Mirrors the Azure PowerShell step:
       #
-      # PowerShell downloads:
-      # https://dot.net/v1/dotnet-install.ps1
+      # - Runtime:
+      #   -Channel 8.0
+      #   -Architecture x86
+      #   -Runtime dotnet
       #
-      # Then:
-      # -Channel 8.0
-      # -Architecture x86
-      # -InstallDir "${env:ProgramFiles(x86)}\dotnet"
-      # -Runtime dotnet
-      #
-      # This workflow intentionally preserves -Runtime dotnet.
-      # ======================================================
+      # - SDK:
+      #   -Channel 8.0
+      #   -Architecture x86
+      # ========================================================
 
-      - name: Install .NET 8.0 x86
+      - name: Install .NET 8.0 x86 Runtime and SDK
         run: |
           $ErrorActionPreference = "Stop"
 
           [Net.ServicePointManager]::SecurityProtocol = `
-              [Net.SecurityProtocolType]::Tls12
+            [Net.SecurityProtocolType]::Tls12
 
-          $installer = "$env:TEMP\dotnet-install.ps1"
+          $installScript = "$env:TEMP\dotnet-install.ps1"
+          $installDir = "${env:ProgramFiles(x86)}\dotnet"
 
           Write-Host "Downloading dotnet-install.ps1..."
 
           Invoke-WebRequest `
             -Uri "https://dot.net/v1/dotnet-install.ps1" `
-            -OutFile $installer
+            -OutFile $installScript
 
-          $dotnetInstallDir = "${env:ProgramFiles(x86)}\dotnet"
+          # ----------------------------------------------------
+          # Install .NET 8 x86 Runtime
+          # ----------------------------------------------------
 
-          Write-Host "Installing .NET 8.0 x86..."
-          Write-Host "Install directory: $dotnetInstallDir"
+          Write-Host "Installing .NET 8.0 x86 Runtime..."
 
-          & $installer `
+          & $installScript `
             -Channel 8.0 `
             -Architecture x86 `
-            -InstallDir $dotnetInstallDir `
+            -InstallDir $installDir `
             -Runtime dotnet `
             -Verbose
 
           if ($LASTEXITCODE -ne 0) {
-            throw ".NET installation failed."
+            throw ".NET 8 x86 Runtime installation failed."
           }
 
-          $dotnetPath = "$dotnetInstallDir\dotnet.exe"
+          # ----------------------------------------------------
+          # Install .NET 8 x86 SDK
+          # ----------------------------------------------------
+
+          Write-Host "Installing .NET 8.0 x86 SDK..."
+
+          & $installScript `
+            -Channel 8.0 `
+            -Architecture x86 `
+            -InstallDir $installDir `
+            -Verbose
+
+          if ($LASTEXITCODE -ne 0) {
+            throw ".NET 8 x86 SDK installation failed."
+          }
+
+          # ----------------------------------------------------
+          # Verify installation
+          # ----------------------------------------------------
+
+          $dotnetPath = "$installDir\dotnet.exe"
 
           if (-not (Test-Path $dotnetPath)) {
-            throw "dotnet.exe was not found at $dotnetPath"
+            throw "dotnet.exe not found at $dotnetPath"
           }
-
-          # Make the x86 .NET installation available to
-          # subsequent GitHub Actions steps.
-          "$dotnetInstallDir" | Out-File `
-            -FilePath $env:GITHUB_PATH `
-            -Encoding utf8 `
-            -Append
-
-          "DOTNET_ROOT=$dotnetInstallDir" | Out-File `
-            -FilePath $env:GITHUB_ENV `
-            -Encoding utf8 `
-            -Append
-
-          "DOTNET_ROOT_X86=$dotnetInstallDir" | Out-File `
-            -FilePath $env:GITHUB_ENV `
-            -Encoding utf8 `
-            -Append
 
           Write-Host ""
           Write-Host "Installed SDKs:"
@@ -149,166 +141,195 @@ jobs:
           & $dotnetPath --list-runtimes
 
           Write-Host ""
-          Write-Host ".NET x86 installation completed."
+          Write-Host ".NET 8 x86 Runtime and SDK installed successfully."
+
+          # Make x86 dotnet available to subsequent steps.
+          $installDir |
+            Out-File `
+              -FilePath $env:GITHUB_PATH `
+              -Encoding utf8 `
+              -Append
+
+          "DOTNET_ROOT=$installDir" |
+            Out-File `
+              -FilePath $env:GITHUB_ENV `
+              -Encoding utf8 `
+              -Append
+
+          "DOTNET_ROOT_X86=$installDir" |
+            Out-File `
+              -FilePath $env:GITHUB_ENV `
+              -Encoding utf8 `
+              -Append
 
 
-      # ======================================================
-      # 3. Verify .NET x86
-      # ======================================================
+      # ========================================================
+      # 3. Verify .NET installation
+      # ========================================================
 
-      - name: Verify .NET x86
+      - name: Verify .NET x86 environment
         run: |
           $ErrorActionPreference = "Stop"
 
-          $dotnetPath = "${env:ProgramFiles(x86)}\dotnet\dotnet.exe"
+          $dotnet = "${env:ProgramFiles(x86)}\dotnet\dotnet.exe"
 
-          if (-not (Test-Path $dotnetPath)) {
-            throw "x86 dotnet.exe not found."
+          if (-not (Test-Path $dotnet)) {
+            throw "x86 dotnet executable not found."
           }
 
-          Write-Host "DOTNET_ROOT       = $env:DOTNET_ROOT"
-          Write-Host "DOTNET_ROOT_X86   = $env:DOTNET_ROOT_X86"
-          Write-Host "dotnet executable = $dotnetPath"
+          Write-Host "DOTNET_ROOT     : $env:DOTNET_ROOT"
+          Write-Host "DOTNET_ROOT_X86 : $env:DOTNET_ROOT_X86"
 
-          & $dotnetPath --info
+          & $dotnet --info
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to execute x86 dotnet."
+            throw "dotnet --info failed."
           }
 
 
-      # ======================================================
+      # ========================================================
       # 4. Install Visual C++ Redistributable x86
       #
-      # Azure:
-      # PowerShell@2
-      # URL:
-      # https://aka.ms/vs/17/release/vc_redist.x86.exe
-      # ======================================================
+      # Mirrors Azure PowerShell step.
+      # ========================================================
 
       - name: Install Visual C++ Redistributable x86
         run: |
           $ErrorActionPreference = "Stop"
 
           $url = "https://aka.ms/vs/17/release/vc_redist.x86.exe"
-          $output = "$env:TEMP\vc_redist.x86.exe"
+          $installer = "$env:TEMP\vc_redist.x86.exe"
 
           Write-Host "Downloading VC++ Redistributable x86..."
 
           Invoke-WebRequest `
             -Uri $url `
-            -OutFile $output
+            -OutFile $installer
 
-          if (-not (Test-Path $output)) {
-            throw "VC++ Redistributable installer was not downloaded."
+          if (-not (Test-Path $installer)) {
+            throw "VC++ Redistributable installer download failed."
           }
 
           Write-Host "Installing VC++ Redistributable x86..."
 
           $process = Start-Process `
-            -FilePath $output `
+            -FilePath $installer `
             -ArgumentList "/install", "/quiet", "/norestart" `
             -Wait `
             -PassThru
 
           Write-Host "VC++ installer exit code: $($process.ExitCode)"
 
-          # 0    = installed successfully
-          # 1638 = another version already installed
-          # 3010 = installed; reboot required
+          # 0    = Success
+          # 1638 = Another version already installed
+          # 3010 = Success; restart required
           if ($process.ExitCode -notin @(0, 1638, 3010)) {
-            throw "VC++ Redistributable installation failed with exit code $($process.ExitCode)"
+            throw "VC++ installation failed. Exit code: $($process.ExitCode)"
           }
 
-          Write-Host "VC++ Redistributable x86 installation completed."
+          Write-Host "Visual C++ Redistributable x86 ready."
 
 
-      # ======================================================
-      # 5. Install NuGet
+      # ========================================================
+      # 5. Setup NuGet
       #
       # Azure:
       # NuGetToolInstaller@1
-      #
-      # GitHub runner may already contain NuGet, but explicitly
-      # install it to preserve the Azure pipeline behavior.
-      # ======================================================
+      # ========================================================
 
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
 
 
-      # ======================================================
-      # 6. Discover solution files
+      # ========================================================
+      # 6. Setup MSBuild
+      #
+      # Azure:
+      # VSBuild@1
+      # msbuildArchitecture: x86
+      # ========================================================
+
+      - name: Setup MSBuild x86
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x86
+
+
+      # ========================================================
+      # 7. Discover solution files
       #
       # Azure:
       # solution: '**/*.sln'
-      # ======================================================
+      # ========================================================
 
       - name: Discover solution files
-        id: solutions
         run: |
           $ErrorActionPreference = "Stop"
 
-          $solutions = Get-ChildItem `
-            -Path $env:GITHUB_WORKSPACE `
-            -Filter "*.sln" `
-            -Recurse `
-            -File
+          $solutions = @(
+            Get-ChildItem `
+              -Path $env:GITHUB_WORKSPACE `
+              -Filter "*.sln" `
+              -Recurse `
+              -File
+          )
 
           if ($solutions.Count -eq 0) {
-            throw "No .sln files were found."
+            throw "No Visual Studio solution (*.sln) found."
           }
 
-          Write-Host "Solutions found:"
+          Write-Host "Found $($solutions.Count) solution(s):"
 
           foreach ($solution in $solutions) {
-            Write-Host "  $($solution.FullName)"
+            Write-Host " - $($solution.FullName)"
           }
 
-          $solutionPaths = $solutions |
-            ForEach-Object { $_.FullName }
-
-          $solutionPaths |
-            ConvertTo-Json -Compress |
-            Out-File `
-              -FilePath "$env:RUNNER_TEMP\solutions.json" `
-              -Encoding utf8
+          $solutions.FullName |
+            ConvertTo-Json |
+            Set-Content `
+              -Path "$env:RUNNER_TEMP\solutions.json" `
+              -Encoding UTF8
 
 
-      # ======================================================
-      # 7. NuGet restore
+      # ========================================================
+      # 8. NuGet Restore
       #
       # Azure:
       #
       # NuGetCommand@2
       # command: restore
-      # restoreSolution: '$(solution)'
+      # restoreSolution: $(solution)
       # feedsToUse: config
       # nugetConfigPath: nuget.config
-      # ======================================================
+      # ========================================================
 
-      - name: NuGet restore
+      - name: Restore NuGet packages
         run: |
           $ErrorActionPreference = "Stop"
 
-          $solutions = Get-Content `
-            "$env:RUNNER_TEMP\solutions.json" |
-            ConvertFrom-Json
+          $nugetConfig = Join-Path `
+            $env:GITHUB_WORKSPACE `
+            "nuget.config"
 
-          if (-not (Test-Path "$env:GITHUB_WORKSPACE\nuget.config")) {
-            throw "nuget.config was not found at repository root."
+          if (-not (Test-Path $nugetConfig)) {
+            throw "nuget.config not found at repository root."
           }
+
+          $solutions = @(
+            Get-Content "$env:RUNNER_TEMP\solutions.json" |
+            ConvertFrom-Json
+          )
 
           foreach ($solution in $solutions) {
 
             Write-Host ""
-            Write-Host "============================================="
+            Write-Host "========================================"
             Write-Host "Restoring:"
             Write-Host $solution
-            Write-Host "============================================="
+            Write-Host "========================================"
 
-            nuget restore $solution `
-              -ConfigFile "$env:GITHUB_WORKSPACE\nuget.config" `
+            nuget restore "$solution" `
+              -ConfigFile "$nugetConfig" `
               -NonInteractive
 
             if ($LASTEXITCODE -ne 0) {
@@ -317,59 +338,39 @@ jobs:
           }
 
 
-      # ======================================================
-      # 8. Setup MSBuild
+      # ========================================================
+      # 9. Build Solution
       #
       # Azure:
       #
       # VSBuild@1
-      # msbuildArchitecture: x86
-      #
-      # Use the x86 MSBuild executable.
-      # ======================================================
-
-      - name: Setup MSBuild x86
-        uses: microsoft/setup-msbuild@v2
-        with:
-          msbuild-architecture: x86
-
-
-      # ======================================================
-      # 9. Build solution
-      #
-      # Azure:
-      #
-      # VSBuild@1
-      # displayName: 'Build solution'
-      #
-      # msbuildArgs:
-      #   /p:PlatformToolset=v143
-      #
+      # msbuildArgs: /p:PlatformToolset=v143
       # platform: x86
       # configuration: Release
       # msbuildArchitecture: x86
-      # ======================================================
+      # ========================================================
 
       - name: Build solution
         run: |
           $ErrorActionPreference = "Stop"
 
-          $solutions = Get-Content `
-            "$env:RUNNER_TEMP\solutions.json" |
+          $solutions = @(
+            Get-Content "$env:RUNNER_TEMP\solutions.json" |
             ConvertFrom-Json
+          )
 
           foreach ($solution in $solutions) {
 
             Write-Host ""
-            Write-Host "============================================="
+            Write-Host "========================================"
             Write-Host "Building:"
             Write-Host $solution
-            Write-Host "Platform: $env:BUILD_PLATFORM"
-            Write-Host "Configuration: $env:BUILD_CONFIGURATION"
-            Write-Host "PlatformToolset: v143"
-            Write-Host "============================================="
+            Write-Host "Platform      : $env:BUILD_PLATFORM"
+            Write-Host "Configuration : $env:BUILD_CONFIGURATION"
+            Write-Host "Toolset       : v143"
+            Write-Host "========================================"
 
-            msbuild $solution `
+            msbuild "$solution" `
               /m `
               /p:Platform="$env:BUILD_PLATFORM" `
               /p:Configuration="$env:BUILD_CONFIGURATION" `
@@ -381,106 +382,90 @@ jobs:
           }
 
 
-      # ======================================================
-      # 10. Create artifact staging directory
-      #
-      # Azure:
-      # $(Build.ArtifactStagingDirectory)
-      #
-      # GitHub equivalent:
-      # $GITHUB_WORKSPACE\artifacts
-      # ======================================================
+      # ========================================================
+      # 10. Create GitHub equivalent of
+      #     Build.ArtifactStagingDirectory
+      # ========================================================
 
-      - name: Prepare artifact staging directory
+      - name: Create artifact staging directory
         run: |
-          $ErrorActionPreference = "Stop"
+          $artifactDir = "$env:GITHUB_WORKSPACE\artifacts"
 
-          $artifactDirectory = "$env:GITHUB_WORKSPACE\artifacts"
-
-          if (Test-Path $artifactDirectory) {
+          if (Test-Path $artifactDir) {
             Remove-Item `
-              -Path $artifactDirectory `
+              $artifactDir `
               -Recurse `
               -Force
           }
 
           New-Item `
+            -Path $artifactDir `
             -ItemType Directory `
-            -Path $artifactDirectory `
-            -Force | Out-Null
+            -Force |
+            Out-Null
 
           Write-Host "Artifact staging directory:"
-          Write-Host $artifactDirectory
+          Write-Host $artifactDir
 
 
-      # ======================================================
-      # 11. Publish artifacts
+      # ========================================================
+      # 11. Publish Artifacts
       #
       # Azure:
       #
       # VSBuild@1
-      # displayName: 'Publish artifacts'
       #
-      # msbuildArgs:
       # /p:OutputPath=$(Build.ArtifactStagingDirectory)
       # /p:PlatformToolset=v143
       #
-      # platform: x86
-      # configuration: Release
-      # msbuildArchitecture: x86
-      # ======================================================
+      # Platform: x86
+      # Configuration: Release
+      # ========================================================
 
-      - name: Publish artifacts
+      - name: Publish build output
         run: |
           $ErrorActionPreference = "Stop"
 
-          $solutions = Get-Content `
-            "$env:RUNNER_TEMP\solutions.json" |
+          $solutions = @(
+            Get-Content "$env:RUNNER_TEMP\solutions.json" |
             ConvertFrom-Json
+          )
 
-          $artifactDirectory = "$env:GITHUB_WORKSPACE\artifacts"
+          $artifactDir = "$env:GITHUB_WORKSPACE\artifacts"
 
           foreach ($solution in $solutions) {
 
             Write-Host ""
-            Write-Host "============================================="
+            Write-Host "========================================"
             Write-Host "Publishing:"
             Write-Host $solution
             Write-Host "Output:"
-            Write-Host $artifactDirectory
-            Write-Host "============================================="
+            Write-Host $artifactDir
+            Write-Host "========================================"
 
-            msbuild $solution `
+            msbuild "$solution" `
               /m `
               /p:Platform="$env:BUILD_PLATFORM" `
               /p:Configuration="$env:BUILD_CONFIGURATION" `
-              /p:OutputPath="$artifactDirectory" `
+              /p:OutputPath="$artifactDir" `
               /p:PlatformToolset=v143
 
             if ($LASTEXITCODE -ne 0) {
-              throw "Publish failed for $solution"
+              throw "Artifact build failed for $solution"
             }
           }
 
 
-      # ======================================================
-      # 12. Set DOTNET_ROOT for x86
+      # ========================================================
+      # 12. Set DOTNET_ROOT
       #
-      # Azure:
-      #
-      # Write-Host "##vso[task.setvariable variable=DOTNET_ROOT]..."
-      #
-      # GitHub:
-      # GITHUB_ENV
-      #
-      # The environment was already established during .NET
-      # installation, but this step explicitly mirrors the
-      # Azure pipeline.
-      # ======================================================
+      # Azure uses ##vso task.setvariable.
+      # GitHub equivalent is GITHUB_ENV.
+      # ========================================================
 
       - name: Set DOTNET_ROOT for x86
         run: |
-          $dotnetRoot = "${env:ProgramFiles(x86)}\dotnet"
+          $dotnetRoot = "C:\Program Files (x86)\dotnet"
 
           "DOTNET_ROOT=$dotnetRoot" |
             Out-File `
@@ -494,180 +479,179 @@ jobs:
               -Encoding utf8 `
               -Append
 
-          Write-Host "DOTNET_ROOT set to $dotnetRoot"
-          Write-Host "DOTNET_ROOT_X86 set to $dotnetRoot"
+          Write-Host "DOTNET_ROOT     = $dotnetRoot"
+          Write-Host "DOTNET_ROOT_X86 = $dotnetRoot"
 
 
-      # ======================================================
-      # 13. Locate test assemblies
+      # ========================================================
+      # 13. Discover test assemblies
       #
       # Azure:
-      #
-      # testAssemblyVer2:
       #
       # **\*Tests.dll
       # !**\*TestAdapter.dll
       # !**\obj\**
       #
       # searchFolder:
-      # $(Build.ArtifactStagingDirectory)
-      # ======================================================
+      # Build.ArtifactStagingDirectory
+      # ========================================================
 
-      - name: Locate unit test assemblies
-        id: tests
+      - name: Discover test assemblies
         run: |
           $ErrorActionPreference = "Stop"
 
-          $artifactDirectory = "$env:GITHUB_WORKSPACE\artifacts"
+          $artifactDir = "$env:GITHUB_WORKSPACE\artifacts"
 
-          if (-not (Test-Path $artifactDirectory)) {
-            throw "Artifact staging directory does not exist."
-          }
-
-          $testAssemblies = Get-ChildItem `
-            -Path $artifactDirectory `
-            -Filter "*Tests.dll" `
-            -Recurse `
-            -File |
+          $testAssemblies = @(
+            Get-ChildItem `
+              -Path $artifactDir `
+              -Filter "*Tests.dll" `
+              -Recurse `
+              -File |
             Where-Object {
               $_.Name -notlike "*TestAdapter.dll" -and
               $_.FullName -notmatch "\\obj\\"
             }
+          )
 
           if ($testAssemblies.Count -eq 0) {
-            throw "No *Tests.dll assemblies were found in the artifact staging directory."
+            throw "No *Tests.dll assemblies found in $artifactDir"
           }
 
-          Write-Host ""
-          Write-Host "Test assemblies found:"
+          Write-Host "Found $($testAssemblies.Count) test assembly/assemblies:"
 
-          foreach ($test in $testAssemblies) {
-            Write-Host "  $($test.FullName)"
+          foreach ($assembly in $testAssemblies) {
+            Write-Host " - $($assembly.FullName)"
           }
 
-          $testPaths = $testAssemblies |
-            ForEach-Object { $_.FullName }
-
-          $testPaths |
-            ConvertTo-Json -Compress |
-            Out-File `
-              -FilePath "$env:RUNNER_TEMP\test-assemblies.json" `
-              -Encoding utf8
+          $testAssemblies.FullName |
+            ConvertTo-Json |
+            Set-Content `
+              -Path "$env:RUNNER_TEMP\test-assemblies.json" `
+              -Encoding UTF8
 
 
-      # ======================================================
-      # 14. Run unit tests x86
+      # ========================================================
+      # 14. Run x86 unit tests
       #
       # Azure:
       #
       # VSTest@3
-      # testSelector: testAssemblies
-      # testAssemblyVer2:
-      #   **\*Tests.dll
-      #   !**\*TestAdapter.dll
-      #   !**\obj\**
-      #
-      # searchFolder:
-      #   $(Build.ArtifactStagingDirectory)
-      #
-      # codeCoverageEnabled: true
-      #
-      # runSettingsFile:
-      #   $(System.DefaultWorkingDirectory)\coverlet.runsettings
-      #
       # platform: x86
-      #
       # runInParallel: false
-      #
-      # env:
-      #   DOTNET_ROOT: C:\Program Files (x86)\dotnet
-      #   DOTNET_ROOT_X86: C:\Program Files (x86)\dotnet
-      # ======================================================
+      # codeCoverageEnabled: true
+      # runSettingsFile: coverlet.runsettings
+      # ========================================================
 
-      - name: Run unit tests x86
+      - name: Run unit tests (x86)
         env:
-          DOTNET_ROOT: C:\Program Files (x86)\dotnet
-          DOTNET_ROOT_X86: C:\Program Files (x86)\dotnet
+          DOTNET_ROOT: 'C:\Program Files (x86)\dotnet'
+          DOTNET_ROOT_X86: 'C:\Program Files (x86)\dotnet'
         run: |
           $ErrorActionPreference = "Stop"
 
-          $testAssemblies = Get-Content `
-            "$env:RUNNER_TEMP\test-assemblies.json" |
-            ConvertFrom-Json
-
-          $runSettings = "$env:GITHUB_WORKSPACE\coverlet.runsettings"
+          $runSettings = Join-Path `
+            $env:GITHUB_WORKSPACE `
+            "coverlet.runsettings"
 
           if (-not (Test-Path $runSettings)) {
-            throw "coverlet.runsettings was not found."
+            throw "coverlet.runsettings not found."
           }
 
-          # Locate x86 vstest.console.exe.
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          # ----------------------------------------------------
+          # Locate vstest.console.exe
+          # ----------------------------------------------------
+
+          $vswhere = `
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
           if (-not (Test-Path $vswhere)) {
-            throw "vswhere.exe was not found."
+            throw "vswhere.exe not found."
           }
 
-          $vstestPath = & $vswhere `
+          $vstest = & $vswhere `
             -latest `
             -products * `
-            -requires Microsoft.VisualStudio.PackageGroup.TestTools `
-            -find "Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" |
+            -find `
+            "Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" |
             Select-Object -First 1
 
-          if (-not $vstestPath) {
-            throw "vstest.console.exe was not found."
+          if (-not $vstest) {
+            throw "vstest.console.exe could not be located."
           }
 
-          Write-Host "VSTest:"
-          Write-Host $vstestPath
+          Write-Host "VSTest executable:"
+          Write-Host $vstest
 
-          Write-Host ""
-          Write-Host "DOTNET_ROOT:"
-          Write-Host $env:DOTNET_ROOT
+          # ----------------------------------------------------
+          # Create test results directory
+          # ----------------------------------------------------
 
-          Write-Host ""
-          Write-Host "Running tests sequentially..."
+          $resultsDirectory = `
+            "$env:GITHUB_WORKSPACE\TestResults"
+
+          New-Item `
+            -Path $resultsDirectory `
+            -ItemType Directory `
+            -Force |
+            Out-Null
+
+          # ----------------------------------------------------
+          # Read test assemblies
+          # ----------------------------------------------------
+
+          $testAssemblies = @(
+            Get-Content `
+              "$env:RUNNER_TEMP\test-assemblies.json" |
+            ConvertFrom-Json
+          )
+
+          # Azure runInParallel=false.
+          # Execute each test assembly sequentially.
 
           foreach ($testAssembly in $testAssemblies) {
 
             Write-Host ""
-            Write-Host "============================================="
+            Write-Host "========================================"
             Write-Host "Testing:"
             Write-Host $testAssembly
-            Write-Host "============================================="
+            Write-Host "Platform: x86"
+            Write-Host "========================================"
 
-            & $vstestPath `
-              $testAssembly `
+            & $vstest `
+              "$testAssembly" `
               /Platform:x86 `
-              /Settings:$runSettings `
+              /Settings:"$runSettings" `
               /EnableCodeCoverage `
-              /Logger:trx
+              /Logger:"trx" `
+              /ResultsDirectory:"$resultsDirectory"
 
             if ($LASTEXITCODE -ne 0) {
-              throw "Unit tests failed for $testAssembly"
+              throw "Unit tests failed: $testAssembly"
             }
           }
 
 
-      # ======================================================
-      # 15. Upload application artifacts
+      # ========================================================
+      # 15. Upload build artifacts
       #
-      # Azure Build.ArtifactStagingDirectory equivalent.
-      # ======================================================
+      # GitHub equivalent of retaining Azure artifact staging
+      # output.
+      # ========================================================
 
-      - name: Upload application artifacts
+      - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: application-artifacts
+          name: application-x86-release
           path: artifacts/
           if-no-files-found: error
+          retention-days: 30
 
 
-      # ======================================================
-      # 16. Upload test results
-      # ======================================================
+      # ========================================================
+      # 16. Upload test results even if tests fail
+      # ========================================================
 
       - name: Upload test results
         if: always()
@@ -675,14 +659,14 @@ jobs:
         with:
           name: test-results
           path: |
-            **/*.trx
-            **/TestResults/**
+            TestResults/**/*.trx
           if-no-files-found: warn
+          retention-days: 30
 
 
-      # ======================================================
+      # ========================================================
       # 17. Upload code coverage
-      # ======================================================
+      # ========================================================
 
       - name: Upload code coverage
         if: always()
@@ -690,7 +674,8 @@ jobs:
         with:
           name: code-coverage
           path: |
-            **/*.coverage
-            **/coverage/**
-            **/TestResults/**
+            TestResults/**/*.coverage
+            TestResults/**/coverage.*
+            **/coverage.cobertura.xml
           if-no-files-found: warn
+          retention-days: 30
