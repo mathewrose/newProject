@@ -28,7 +28,8 @@ permissions:
 
 env:
   SOLUTION_PATTERN: '**/*.sln'
-  BUILD_PLATFORM: 'x86'
+  # BUILD_PLATFORM: 'x86'
+  BUILD_PLATFORM: 'Any CPU'
   BUILD_CONFIGURATION: 'Release'
   DOTNET_X86_ROOT: 'C:\Program Files (x86)\dotnet'
   ARTIFACT_STAGING_DIR: '${{ github.workspace }}\artifacts'
